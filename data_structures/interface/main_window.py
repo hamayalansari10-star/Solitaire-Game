@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QSizePolicy,
 )
+
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 
@@ -25,7 +26,7 @@ class MainWindow(QMainWindow):
 
     CARD_W = 78
     CARD_H = 108
-    CARD_GAP = 29
+    CARD_GAP = 30
 
     def __init__(self):
         super().__init__()
@@ -40,36 +41,35 @@ class MainWindow(QMainWindow):
         self.seconds = 0
         self.won_message_shown = False
 
-        self.setWindowTitle("Solitaire - Klondike")
-        self.setMinimumSize(1100, 760)
-        self.resize(1360, 850)
+        # Hint rotation
+        self.hint_index = 0
+
+        self.setWindowTitle("Klondike Solitaire")
+        self.resize(1200, 850)
+        self.setMinimumSize(950, 700)
 
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #075b3b;
+                background-color: #087a43;
             }
 
             QWidget {
                 color: white;
                 font-family: Arial;
             }
-
-            QPushButton {
-                font-family: Arial;
-                font-weight: bold;
-            }
         """)
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_timer)
 
         self.build_ui()
         self.refresh_board()
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_timer)
         self.timer.start(1000)
 
-    # ==========================================
+    # =====================================
     # USER INTERFACE
-    # ==========================================
+    # =====================================
 
     def build_ui(self):
 
@@ -77,19 +77,19 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(22, 15, 22, 16)
-        main_layout.setSpacing(13)
+        main_layout.setContentsMargins(15, 12, 15, 12)
+        main_layout.setSpacing(12)
 
-        # TOP HEADER
+        # TOP BAR
 
         top_bar = QHBoxLayout()
 
         title = QLabel("♠  SOLITAIRE")
-        title.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+        title.setFont(QFont("Arial", 23, QFont.Weight.Bold))
 
-        self.score_label = QLabel("SCORE: 0")
-        self.moves_label = QLabel("MOVES: 0")
-        self.time_label = QLabel("TIME: 00:00")
+        self.score_label = QLabel("Score: 0")
+        self.moves_label = QLabel("Moves: 0")
+        self.time_label = QLabel("Time: 00:00")
 
         for label in (
             self.score_label,
@@ -108,60 +108,71 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(top_bar)
 
-        # UNDO / REDO
+        # GAME BUTTONS
 
-        history_bar = QHBoxLayout()
-        history_bar.setSpacing(8)
+        button_bar = QHBoxLayout()
+        button_bar.setSpacing(7)
 
-        self.undo_button = self.create_history_button(
-            "UNDO (undo_move)"
-        )
+        self.new_button = self.create_button("NEW GAME")
+        self.undo_button = self.create_button("UNDO")
+        self.redo_button = self.create_button("REDO")
+        self.hint_button = self.create_button("HINT")
+        self.auto_button = self.create_button("AUTO")
+        self.draw_button = self.create_button("DRAW 1")
+        self.draw3_button = self.create_button("DRAW 3")
 
-        self.redo_button = self.create_history_button(
-            "REDO (redo_move)"
-        )
-
+        self.new_button.clicked.connect(self.new_game)
         self.undo_button.clicked.connect(self.undo_move)
         self.redo_button.clicked.connect(self.redo_move)
+        self.hint_button.clicked.connect(self.show_hint)
+        self.auto_button.clicked.connect(self.auto_move)
 
-        self.undo_button.setEnabled(False)
-        self.redo_button.setEnabled(False)
+        self.draw_button.clicked.connect(
+            lambda: self.set_draw_mode(1)
+        )
 
-        history_bar.addWidget(self.undo_button)
-        history_bar.addWidget(self.redo_button)
-        history_bar.addStretch()
+        self.draw3_button.clicked.connect(
+            lambda: self.set_draw_mode(3)
+        )
 
-        main_layout.addLayout(history_bar)
+        for button in (
+            self.new_button,
+            self.undo_button,
+            self.redo_button,
+            self.hint_button,
+            self.auto_button,
+            self.draw_button,
+            self.draw3_button
+        ):
+            button_bar.addWidget(button)
 
-        # STOCK, WASTE, FOUNDATIONS
+        main_layout.addLayout(button_bar)
+
+        # STOCK, WASTE AND FOUNDATIONS
 
         top_area = QHBoxLayout()
-        top_area.setSpacing(14)
+        top_area.setSpacing(12)
 
         self.stock_button = QPushButton()
-        self.stock_button.setFixedSize(
-            self.CARD_W, self.CARD_H
-        )
+        self.stock_button.setFixedSize(self.CARD_W, self.CARD_H)
         self.stock_button.clicked.connect(self.draw_card)
 
         self.waste_button = QPushButton()
-        self.waste_button.setFixedSize(
-            self.CARD_W, self.CARD_H
-        )
+        self.waste_button.setFixedSize(self.CARD_W, self.CARD_H)
         self.waste_button.clicked.connect(self.select_waste)
 
         top_area.addWidget(self.stock_button)
         top_area.addWidget(self.waste_button)
         top_area.addStretch()
 
+        suits = ["Hearts", "Diamonds", "Clubs", "Spades"]
+
         self.foundation_buttons = {}
 
-        for suit in ["Hearts", "Diamonds", "Clubs", "Spades"]:
+        for suit in suits:
 
             button = QPushButton()
-            button.setFixedSize(
-                self.CARD_W, self.CARD_H
-            )
+            button.setFixedSize(self.CARD_W, self.CARD_H)
 
             button.clicked.connect(
                 lambda checked=False, s=suit:
@@ -179,82 +190,37 @@ class MainWindow(QMainWindow):
             "Select a face-up card, then select its destination."
         )
 
-        self.status_label.setStyleSheet(
-            "color: #e2e9df; font-size: 12px;"
-        )
-
         main_layout.addWidget(self.status_label)
-
-        # DRAW MODE BUTTONS
-
-        draw_mode_bar = QHBoxLayout()
-        draw_mode_bar.setSpacing(8)
-
-        self.draw1_button = self.create_history_button("DRAW 1")
-        self.draw3_button = self.create_history_button("DRAW 3")
-
-        self.draw1_button.setCheckable(True)
-        self.draw3_button.setCheckable(True)
-
-        self.draw1_button.clicked.connect(
-            lambda: self.set_draw_mode(1)
-        )
-
-        self.draw3_button.clicked.connect(
-            lambda: self.set_draw_mode(3)
-        )
-
-        draw_mode_bar.addWidget(self.draw1_button)
-        draw_mode_bar.addWidget(self.draw3_button)
-        draw_mode_bar.addStretch()
-
-        main_layout.addLayout(draw_mode_bar)
-
-        self.update_draw_mode_buttons()
 
         # TABLEAU SCROLL AREA
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-
-        self.scroll_area.setFrameShape(
-            QScrollArea.Shape.NoFrame
-        )
-
-        self.scroll_area.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
-
-        self.scroll_area.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAsNeeded
-        )
+        self.scroll_area.setMinimumHeight(430)
 
         self.scroll_area.setStyleSheet("""
             QScrollArea {
-                background: transparent;
+                background-color: #087a43;
                 border: none;
             }
 
             QScrollBar:vertical {
-                background: #064b32;
-                width: 9px;
-                border-radius: 4px;
+                background: #075b35;
+                width: 10px;
             }
 
-            QScrollBar::handle:vertical {
-                background: #d9b75d;
-                border-radius: 4px;
+            QScrollBar:handle:vertical {
+                background: #c7e5d2;
                 min-height: 25px;
             }
 
             QScrollBar:horizontal {
-                background: #064b32;
-                height: 9px;
+                background: #075b35;
+                height: 10px;
             }
 
-            QScrollBar::handle:horizontal {
-                background: #d9b75d;
-                border-radius: 4px;
+            QScrollBar:handle:horizontal {
+                background: #c7e5d2;
             }
         """)
 
@@ -264,7 +230,7 @@ class MainWindow(QMainWindow):
             self.tableau_content
         )
 
-        self.tableau_layout.setContentsMargins(2, 4, 2, 4)
+        self.tableau_layout.setContentsMargins(3, 5, 3, 5)
         self.tableau_layout.setSpacing(13)
 
         self.tableau_layout.setAlignment(
@@ -274,7 +240,7 @@ class MainWindow(QMainWindow):
 
         self.tableau_columns = []
 
-        for _ in range(7):
+        for i in range(7):
 
             column = QWidget()
             column.setFixedWidth(self.CARD_W)
@@ -294,175 +260,107 @@ class MainWindow(QMainWindow):
             stretch=1
         )
 
-        # BOTTOM TOOLBAR
+        self.update_history_buttons()
+        self.update_draw_buttons()
 
-        bottom_bar = QHBoxLayout()
-        bottom_bar.setSpacing(8)
-
-        new_button = self.create_toolbar_button("NEW GAME")
-        new_button.clicked.connect(self.new_game)
-
-        hint_button = self.create_toolbar_button("HINT")
-        hint_button.clicked.connect(self.show_hint)
-
-        restart_button = self.create_toolbar_button("RESTART")
-        restart_button.clicked.connect(self.restart_game)
-
-        move_history_button = self.create_toolbar_button(
-            "MOVE HISTORY"
-        )
-        move_history_button.clicked.connect(
-            self.show_move_history
-        )
-
-        action_history_button = self.create_toolbar_button(
-            "ACTION HISTORY"
-        )
-        action_history_button.clicked.connect(
-            self.show_action_history
-        )
-
-        card_location_button = self.create_toolbar_button(
-            "CARD LOCATION"
-        )
-        card_location_button.clicked.connect(
-            self.show_card_location
-        )
-
-        bottom_bar.addWidget(new_button)
-        bottom_bar.addWidget(hint_button)
-        bottom_bar.addWidget(restart_button)
-        bottom_bar.addWidget(move_history_button)
-        bottom_bar.addWidget(action_history_button)
-        bottom_bar.addWidget(card_location_button)
-
-        main_layout.addLayout(bottom_bar)
-
-    # ==========================================
+    # =====================================
     # BUTTON DESIGN
-    # ==========================================
+    # =====================================
 
-    def create_history_button(self, text):
+    def create_button(self, text):
 
         button = QPushButton(text)
-        button.setFixedSize(155, 38)
+        button.setMinimumHeight(38)
 
         button.setStyleSheet("""
             QPushButton {
-                background-color: #e5bd62;
-                color: #263b2e;
-                border: none;
-                border-radius: 7px;
+                background-color: #075b35;
+                color: white;
+                border: 1px solid #b8e0c7;
+                padding: 6px;
                 font-size: 11px;
                 font-weight: bold;
-                padding: 4px;
             }
 
             QPushButton:hover {
-                background-color: #f0ce7b;
+                background-color: #0b9251;
             }
 
             QPushButton:disabled {
-                background-color: #9c895e;
-                color: #d6d0bd;
+                background-color: #477c60;
+                color: #c5d5cb;
             }
         """)
 
         return button
 
-    def create_toolbar_button(self, text):
-
-        button = QPushButton(text)
-        button.setMinimumHeight(42)
-        button.setMinimumWidth(100)
-
-        button.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed
-        )
-
-        button.setStyleSheet("""
-            QPushButton {
-                background-color: #e5bd62;
-                color: #263b2e;
-                border: none;
-                border-radius: 7px;
-                font-size: 10px;
-                font-weight: bold;
-                padding: 5px;
-            }
-
-            QPushButton:hover {
-                background-color: #f0ce7b;
-            }
-
-            QPushButton:disabled {
-                background-color: #9c895e;
-                color: #d6d0bd;
-            }
-        """)
-
-        return button
-
-    # ==========================================
+    # =====================================
     # DRAW MODE
-    # ==========================================
+    # =====================================
 
     def set_draw_mode(self, count):
 
-        if not self.game.set_draw_mode(count):
-            return
-
-        self.update_draw_mode_buttons()
+        self.game.set_draw_mode(count)
 
         self.status_label.setText(
             f"Draw mode changed to Draw {count}."
         )
 
-    def update_draw_mode_buttons(self):
+        self.update_draw_buttons()
 
-        count = self.game.draw_count
+    def update_draw_buttons(self):
 
-        self.draw1_button.setChecked(count == 1)
-        self.draw3_button.setChecked(count == 3)
+        if self.game.draw_count == 1:
 
-        active_style = """
-            QPushButton {
-                background-color: #f0ce7b;
-                color: #173c2c;
-                border: 3px solid white;
-                border-radius: 7px;
-                font-size: 11px;
-                font-weight: bold;
-            }
-        """
+            self.draw_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #e5c75e;
+                    color: black;
+                    border: 2px solid white;
+                    padding: 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+            """)
 
-        inactive_style = """
-            QPushButton {
-                background-color: #e5bd62;
-                color: #263b2e;
-                border: 1px solid #c5a34f;
-                border-radius: 7px;
-                font-size: 11px;
-                font-weight: bold;
-            }
+            self.draw3_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #075b35;
+                    color: white;
+                    border: 1px solid #b8e0c7;
+                    padding: 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+            """)
 
-            QPushButton:hover {
-                background-color: #f0ce7b;
-            }
-        """
+        else:
 
-        self.draw1_button.setStyleSheet(
-            active_style if count == 1 else inactive_style
-        )
+            self.draw3_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #e5c75e;
+                    color: black;
+                    border: 2px solid white;
+                    padding: 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+            """)
 
-        self.draw3_button.setStyleSheet(
-            active_style if count == 3 else inactive_style
-        )
+            self.draw_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #075b35;
+                    color: white;
+                    border: 1px solid #b8e0c7;
+                    padding: 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+            """)
 
-    # ==========================================
-    # CARD DESIGN
-    # ==========================================
+    # =====================================
+    # CARD DISPLAY
+    # =====================================
 
     def card_display_text(self, card):
 
@@ -484,12 +382,7 @@ class MainWindow(QMainWindow):
 
         return f"{rank}\n{symbols[card.suit]}"
 
-    def create_card_button(
-        self,
-        card,
-        callback,
-        selected=False
-    ):
+    def create_card_button(self, card, callback, selected=False):
 
         button = QPushButton()
         button.setFixedSize(self.CARD_W, self.CARD_H)
@@ -497,15 +390,15 @@ class MainWindow(QMainWindow):
         if card.face_up:
 
             color = (
-                "#d92735"
+                "#d71932"
                 if card.color == "Red"
-                else "#17202a"
+                else "#111111"
             )
 
             border = (
-                "3px solid #f4ce72"
+                "3px solid #e5c75e"
                 if selected
-                else "1px solid #d6d1c5"
+                else "1px solid #cccccc"
             )
 
             button.setText(self.card_display_text(card))
@@ -515,14 +408,9 @@ class MainWindow(QMainWindow):
                     background-color: #fffdf5;
                     color: {color};
                     border: {border};
-                    border-radius: 8px;
-                    font-size: 25px;
+                    font-size: 24px;
                     font-weight: bold;
-                }}
-
-                QPushButton:hover {{
-                    background-color: #f5f0df;
-                    border: 3px solid #e8bf5e;
+                    text-align: center;
                 }}
             """)
 
@@ -532,15 +420,10 @@ class MainWindow(QMainWindow):
 
             button.setStyleSheet("""
                 QPushButton {
-                    background-color: #19458d;
-                    color: #e6edff;
-                    border: 4px solid #e4c875;
-                    border-radius: 8px;
-                    font-size: 31px;
-                }
-
-                QPushButton:hover {
-                    background-color: #2456a4;
+                    background-color: #075b35;
+                    color: white;
+                    border: 2px solid #b8e0c7;
+                    font-size: 30px;
                 }
             """)
 
@@ -548,9 +431,9 @@ class MainWindow(QMainWindow):
 
         return button
 
-    # ==========================================
-    # UNDO / REDO SYSTEM
-    # ==========================================
+    # =====================================
+    # UNDO AND REDO
+    # =====================================
 
     def save_history(self):
 
@@ -560,70 +443,7 @@ class MainWindow(QMainWindow):
         )
 
         self.undo_stack.push(snapshot)
-
         self.redo_stack = Stack()
-
-        self.update_history_buttons()
-
-    def restore_snapshot(self, snapshot):
-
-        self.game = snapshot[0]
-        self.moves = snapshot[1]
-
-        self.selected = None
-        self.won_message_shown = False
-
-        self.update_draw_mode_buttons()
-        self.refresh_board()
-
-        if not self.game.check_win():
-            self.timer.start(1000)
-
-    def undo_move(self):
-
-        if self.undo_stack.is_empty():
-
-            self.status_label.setText("Nothing to undo!")
-            return
-
-        current_snapshot = (
-            deepcopy(self.game),
-            self.moves
-        )
-
-        self.redo_stack.push(current_snapshot)
-
-        previous_snapshot = self.undo_stack.pop()
-
-        self.restore_snapshot(previous_snapshot)
-
-        self.status_label.setText(
-            "UNDO: Previous move restored."
-        )
-
-        self.update_history_buttons()
-
-    def redo_move(self):
-
-        if self.redo_stack.is_empty():
-
-            self.status_label.setText("Nothing to redo!")
-            return
-
-        current_snapshot = (
-            deepcopy(self.game),
-            self.moves
-        )
-
-        self.undo_stack.push(current_snapshot)
-
-        next_snapshot = self.redo_stack.pop()
-
-        self.restore_snapshot(next_snapshot)
-
-        self.status_label.setText(
-            "REDO: Move restored again."
-        )
 
         self.update_history_buttons()
 
@@ -637,9 +457,69 @@ class MainWindow(QMainWindow):
             not self.redo_stack.is_empty()
         )
 
-    # ==========================================
+    def restore_snapshot(self, snapshot):
+
+        self.game = snapshot[0]
+        self.moves = snapshot[1]
+
+        self.selected = None
+        self.won_message_shown = False
+
+        self.hint_index = 0
+
+        self.update_draw_buttons()
+        self.refresh_board()
+
+        if not self.game.check_win():
+            self.timer.start(1000)
+
+    def undo_move(self):
+
+        if self.undo_stack.is_empty():
+
+            self.status_label.setText("Nothing to undo.")
+            return
+
+        current = (
+            deepcopy(self.game),
+            self.moves
+        )
+
+        self.redo_stack.push(current)
+
+        previous = self.undo_stack.pop()
+
+        self.restore_snapshot(previous)
+
+        self.status_label.setText("Previous move restored.")
+
+        self.update_history_buttons()
+
+    def redo_move(self):
+
+        if self.redo_stack.is_empty():
+
+            self.status_label.setText("Nothing to redo.")
+            return
+
+        current = (
+            deepcopy(self.game),
+            self.moves
+        )
+
+        self.undo_stack.push(current)
+
+        next_state = self.redo_stack.pop()
+
+        self.restore_snapshot(next_state)
+
+        self.status_label.setText("Move restored again.")
+
+        self.update_history_buttons()
+
+    # =====================================
     # REFRESH BOARD
-    # ==========================================
+    # =====================================
 
     def refresh_board(self):
 
@@ -651,11 +531,10 @@ class MainWindow(QMainWindow):
 
             self.stock_button.setStyleSheet("""
                 QPushButton {
-                    background-color: #19458d;
+                    background-color: #075b35;
                     color: white;
-                    border: 4px solid #e4c875;
-                    border-radius: 8px;
-                    font-size: 32px;
+                    border: 2px solid #b8e0c7;
+                    font-size: 30px;
                 }
             """)
 
@@ -666,9 +545,9 @@ class MainWindow(QMainWindow):
             self.stock_button.setStyleSheet("""
                 QPushButton {
                     background-color: transparent;
-                    border: 2px dashed #d2dfd4;
-                    border-radius: 8px;
-                    font-size: 30px;
+                    color: white;
+                    border: 2px dashed #b8e0c7;
+                    font-size: 28px;
                 }
             """)
 
@@ -679,9 +558,9 @@ class MainWindow(QMainWindow):
             card = self.game.waste[-1]
 
             color = (
-                "#d92735"
+                "#d71932"
                 if card.color == "Red"
-                else "#17202a"
+                else "#111111"
             )
 
             self.waste_button.setText(
@@ -692,9 +571,9 @@ class MainWindow(QMainWindow):
                 QPushButton {{
                     background-color: #fffdf5;
                     color: {color};
-                    border: 1px solid #d6d1c5;
-                    border-radius: 8px;
-                    font-size: 23px;
+                    border: 1px solid #cccccc;
+                    font-size: 24px;
+                    font-weight: bold;
                 }}
             """)
 
@@ -705,9 +584,8 @@ class MainWindow(QMainWindow):
             self.waste_button.setStyleSheet("""
                 QPushButton {
                     background-color: transparent;
-                    border: 2px dashed #d2dfd4;
-                    border-radius: 8px;
-                    font-size: 13px;
+                    color: white;
+                    border: 2px dashed #b8e0c7;
                 }
             """)
 
@@ -729,9 +607,9 @@ class MainWindow(QMainWindow):
                 card = pile[-1]
 
                 color = (
-                    "#d92735"
+                    "#d71932"
                     if card.color == "Red"
-                    else "#17202a"
+                    else "#111111"
                 )
 
                 button.setText(
@@ -742,9 +620,9 @@ class MainWindow(QMainWindow):
                     QPushButton {{
                         background-color: #fffdf5;
                         color: {color};
-                        border: 1px solid #d6d1c5;
-                        border-radius: 8px;
-                        font-size: 23px;
+                        border: 1px solid #cccccc;
+                        font-size: 24px;
+                        font-weight: bold;
                     }}
                 """)
 
@@ -755,9 +633,8 @@ class MainWindow(QMainWindow):
                 button.setStyleSheet("""
                     QPushButton {
                         background-color: transparent;
-                        border: 2px dashed #d2dfd4;
-                        border-radius: 8px;
-                        color: #d2dfd4;
+                        color: white;
+                        border: 2px dashed #b8e0c7;
                         font-size: 30px;
                     }
                 """)
@@ -769,10 +646,10 @@ class MainWindow(QMainWindow):
             default=0
         )
 
-        board_height = max(
-            self.CARD_H + 8,
-            self.CARD_H +
-            max(0, max_cards - 1) * self.CARD_GAP + 8
+        board_height = (
+            self.CARD_H
+            + max(0, max_cards - 1) * self.CARD_GAP
+            + 180
         )
 
         for column in self.tableau_columns:
@@ -798,11 +675,10 @@ class MainWindow(QMainWindow):
 
                 empty.setStyleSheet("""
                     QPushButton {
-                        background: transparent;
-                        border: 2px dashed #d2dfd4;
-                        border-radius: 8px;
-                        color: #d2dfd4;
-                        font-size: 22px;
+                        background-color: transparent;
+                        color: white;
+                        border: 2px dashed #b8e0c7;
+                        font-size: 25px;
                     }
                 """)
 
@@ -826,7 +702,7 @@ class MainWindow(QMainWindow):
                     card,
                     lambda checked=False, i=index, ci=card_index:
                     self.select_tableau(i, ci),
-                    selected=is_selected
+                    is_selected
                 )
 
                 button.setParent(column)
@@ -841,11 +717,11 @@ class MainWindow(QMainWindow):
         # SCORE AND MOVES
 
         self.score_label.setText(
-            f"SCORE: {self.game.score}"
+            f"Score: {self.game.score}"
         )
 
         self.moves_label.setText(
-            f"MOVES: {self.moves}"
+            f"Moves: {self.moves}"
         )
 
         self.update_history_buttons()
@@ -858,55 +734,39 @@ class MainWindow(QMainWindow):
         ):
 
             self.won_message_shown = True
-
             self.timer.stop()
 
             QMessageBox.information(
                 self,
-                "Congratulations!",
-                f"You won the Solitaire game!\n\n"
-                f"Final Score: {self.game.score}\n"
-                f"Total Moves: {self.moves}"
+                "You Win!",
+                f"Congratulations!\n\n"
+                f"Score: {self.game.score}\n"
+                f"Moves: {self.moves}"
             )
 
-    # ==========================================
-    # STOCK AND WASTE
-    # ==========================================
+    # =====================================
+    # DRAW CARD
+    # =====================================
 
     def draw_card(self):
 
-        if self.game.stock:
+        self.save_history()
 
-            self.save_history()
+        self.game.draw_from_stock()
+        self.moves += 1
 
-            draw_mode = self.game.draw_count
-
-            self.game.draw_from_stock()
-            self.moves += 1
-
-            self.status_label.setText(
-                f"Draw {draw_mode}: Cards drawn from stock."
-            )
-
-        elif self.game.waste:
-
-            self.save_history()
-
-            self.game.draw_from_stock()
-            self.moves += 1
-
-            self.status_label.setText(
-                "Stock recycled. Cards returned to stock."
-            )
-
-        else:
-
-            self.status_label.setText(
-                "No cards available in stock or waste."
-            )
-
+        self.hint_index = 0
         self.selected = None
+
+        self.status_label.setText(
+            f"Draw {self.game.draw_count}: Cards drawn."
+        )
+
         self.refresh_board()
+
+    # =====================================
+    # SELECT WASTE
+    # =====================================
 
     def select_waste(self):
 
@@ -916,14 +776,14 @@ class MainWindow(QMainWindow):
         self.selected = ("waste", None, None)
 
         self.status_label.setText(
-            "Waste card selected. Choose a destination."
+            "Waste card selected. Choose destination."
         )
 
         self.refresh_board()
 
-    # ==========================================
-    # TABLEAU SELECTION
-    # ==========================================
+    # =====================================
+    # SELECT TABLEAU
+    # =====================================
 
     def select_tableau(self, pile_index, card_index):
 
@@ -946,7 +806,7 @@ class MainWindow(QMainWindow):
             )
 
             self.status_label.setText(
-                f"Selected {card}. Choose a destination column."
+                "Card selected. Choose destination."
             )
 
             self.refresh_board()
@@ -966,24 +826,24 @@ class MainWindow(QMainWindow):
             )
 
             self.status_label.setText(
-                f"Selected {card}. Choose a destination column."
+                "New card sequence selected."
             )
 
             self.refresh_board()
             return
 
-        self.perform_tableau_destination(pile_index)
+        self.move_to_tableau(pile_index)
 
-    # ==========================================
-    # TABLEAU MOVEMENT
-    # ==========================================
+    # =====================================
+    # MOVE TO TABLEAU
+    # =====================================
 
-    def perform_tableau_destination(self, target_index):
+    def move_to_tableau(self, target_index):
 
         if self.selected is None:
             return
 
-        source_type, source_index, source_card_index = self.selected
+        source_type, source_index, card_index = self.selected
 
         if source_type == "waste":
 
@@ -991,10 +851,10 @@ class MainWindow(QMainWindow):
                 self.finish_move(False)
                 return
 
-            moving_card = self.game.waste[-1]
+            card = self.game.waste[-1]
 
             if not self.game.is_valid_tableau_move(
-                moving_card,
+                card,
                 self.game.tableau[target_index]
             ):
 
@@ -1009,42 +869,47 @@ class MainWindow(QMainWindow):
 
         else:
 
+            source = self.game.tableau[source_index]
+            target = self.game.tableau[target_index]
+
             if source_index == target_index:
 
                 self.selected = None
                 self.refresh_board()
                 return
 
-            source = self.game.tableau[source_index]
-            target = self.game.tableau[target_index]
+            moving_cards = source[card_index:]
 
-            if source_card_index >= len(source):
+            if not moving_cards:
                 self.finish_move(False)
                 return
 
-            moving_cards = source[source_card_index:]
+            valid = True
 
-            sequence_valid = all(
-                card.face_up for card in moving_cards
-            )
+            for card in moving_cards:
+
+                if not card.face_up:
+                    valid = False
+                    break
 
             for i in range(len(moving_cards) - 1):
 
-                current_card = moving_cards[i]
-                next_card = moving_cards[i + 1]
+                first = moving_cards[i]
+                second = moving_cards[i + 1]
 
                 if (
-                    current_card.color == next_card.color
-                    or current_card.rank != next_card.rank + 1
+                    first.color == second.color
+                    or first.rank != second.rank + 1
                 ):
 
-                    sequence_valid = False
+                    valid = False
                     break
 
             if (
-                not sequence_valid
+                not valid
                 or not self.game.is_valid_tableau_move(
-                    moving_cards[0], target
+                    moving_cards[0],
+                    target
                 )
             ):
 
@@ -1056,21 +921,21 @@ class MainWindow(QMainWindow):
             success = self.game.move_tableau_to_tableau(
                 source_index,
                 target_index,
-                source_card_index
+                card_index
             )
 
         self.finish_move(success)
 
-    # ==========================================
-    # EMPTY COLUMN MOVEMENT
-    # ==========================================
+    # =====================================
+    # EMPTY TABLEAU COLUMN
+    # =====================================
 
     def select_empty_column(self, pile_index):
 
         if self.selected is None:
             return
 
-        source_type, source_index, source_card_index = self.selected
+        source_type, source_index, card_index = self.selected
 
         if source_type == "waste":
 
@@ -1096,37 +961,15 @@ class MainWindow(QMainWindow):
 
         else:
 
-            source = self.game.tableau[source_index]
-
             if source_index == pile_index:
 
                 self.selected = None
                 self.refresh_board()
                 return
 
-            if source_card_index >= len(source):
-                self.finish_move(False)
-                return
+            moving_cards = self.game.tableau[source_index][card_index:]
 
-            moving_cards = source[source_card_index:]
-
-            valid = (
-                bool(moving_cards)
-                and moving_cards[0].rank == 13
-                and all(card.face_up for card in moving_cards)
-            )
-
-            for i in range(len(moving_cards) - 1):
-
-                if (
-                    moving_cards[i].color == moving_cards[i + 1].color
-                    or moving_cards[i].rank != moving_cards[i + 1].rank + 1
-                ):
-
-                    valid = False
-                    break
-
-            if not valid:
+            if not moving_cards or moving_cards[0].rank != 13:
                 self.finish_move(False)
                 return
 
@@ -1135,46 +978,48 @@ class MainWindow(QMainWindow):
             success = self.game.move_tableau_to_tableau(
                 source_index,
                 pile_index,
-                source_card_index
+                card_index
             )
 
         self.finish_move(success)
 
-    # ==========================================
-    # FOUNDATION MOVEMENT
-    # ==========================================
+    # =====================================
+    # MOVE TO FOUNDATION
+    # =====================================
 
     def move_to_foundation(self, suit):
 
         if self.selected is None:
             return
 
-        source_type, source_index, source_card_index = self.selected
+        source_type, source_index, card_index = self.selected
 
         success = False
 
         if source_type == "waste":
 
-            if (
-                self.game.waste
-                and self.game.waste[-1].suit == suit
-                and self.game.is_valid_foundation_move(
-                    self.game.waste[-1],
-                    self.game.foundations[suit]
-                )
-            ):
+            if self.game.waste:
 
-                self.save_history()
+                card = self.game.waste[-1]
 
-                success = self.game.move_waste_to_foundation()
+                if (
+                    card.suit == suit
+                    and self.game.is_valid_foundation_move(
+                        card,
+                        self.game.foundations[suit]
+                    )
+                ):
 
-        elif source_type == "tableau":
+                    self.save_history()
+                    success = self.game.move_waste_to_foundation()
+
+        else:
 
             pile = self.game.tableau[source_index]
 
             if (
                 pile
-                and source_card_index == len(pile) - 1
+                and card_index == len(pile) - 1
                 and pile[-1].suit == suit
                 and self.game.is_valid_foundation_move(
                     pile[-1],
@@ -1190,269 +1035,316 @@ class MainWindow(QMainWindow):
 
         self.finish_move(success)
 
-    # ==========================================
+    # =====================================
     # FINISH MOVE
-    # ==========================================
+    # =====================================
 
     def finish_move(self, success):
 
         if success:
 
             self.moves += 1
+            self.hint_index = 0
 
-            self.status_label.setText(
-                "Move successful!"
-            )
+            self.status_label.setText("Move successful.")
 
         else:
 
-            self.status_label.setText(
-                "Invalid move!"
-            )
+            self.status_label.setText("Invalid move.")
 
         self.selected = None
         self.refresh_board()
 
-    # ==========================================
-    # LINKED LIST: MOVE HISTORY
-    # ==========================================
-
-    def show_move_history(self):
-
-        moves = self.game.get_move_history()
-
-        if not moves:
-            history_text = "No card moves recorded yet."
-        else:
-            history_text = "\n\n".join(
-                f"{i + 1}. {move}"
-                for i, move in enumerate(moves)
-            )
-
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Linked List - Move History")
-        msg.setText(history_text)
-
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: white;
-            }
-
-            QMessageBox QLabel {
-                color: black;
-                font-size: 13px;
-            }
-
-            QMessageBox QPushButton {
-                background-color: #e5bd62;
-                color: black;
-                padding: 6px 18px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-        """)
-
-        msg.exec()
-
-    # ==========================================
-    # QUEUE: ACTION HISTORY
-    # ==========================================
-
-    def show_action_history(self):
-
-        actions = self.game.get_action_history()
-
-        if not actions:
-            history_text = "No actions recorded yet."
-        else:
-            history_text = "\n\n".join(
-                f"{i + 1}. {action}"
-                for i, action in enumerate(actions)
-            )
-
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Queue - Action History")
-        msg.setText(history_text)
-
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: white;
-            }
-
-            QMessageBox QLabel {
-                color: black;
-                font-size: 13px;
-            }
-
-            QMessageBox QPushButton {
-                background-color: #e5bd62;
-                color: black;
-                padding: 6px 18px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-        """)
-
-        msg.exec()
-
-    # ==========================================
-    # CARD MAP: LOCATION
-    # ==========================================
-
-    def show_card_location(self):
-
-        selected_card = None
-
-        if self.selected is not None:
-
-            source_type, source_index, card_index = self.selected
-
-            if source_type == "waste":
-
-                if self.game.waste:
-                    selected_card = self.game.waste[-1]
-
-            elif source_type == "tableau":
-
-                pile = self.game.tableau[source_index]
-
-                if 0 <= card_index < len(pile):
-                    selected_card = pile[card_index]
-
-        if selected_card is not None:
-
-            location = self.game.get_card_location(
-                selected_card
-            )
-
-            message = (
-                f"Card: {selected_card}\n"
-                f"Current Location: {location}"
-            )
-
-        else:
-
-            stock_count = len(self.game.stock)
-            waste_count = len(self.game.waste)
-
-            tableau_count = sum(
-                len(pile) for pile in self.game.tableau
-            )
-
-            foundation_count = sum(
-                len(pile)
-                for pile in self.game.foundations.values()
-            )
-
-            message = (
-                "CARD LOCATION SUMMARY\n\n"
-                f"Stock: {stock_count}\n"
-                f"Waste: {waste_count}\n"
-                f"Tableau: {tableau_count}\n"
-                f"Foundations: {foundation_count}\n\n"
-                f"Mapped Cards: {self.game.get_card_map_size()}"
-            )
-
-        msg = QMessageBox(self)
-        msg.setWindowTitle("CardMap - Card Location")
-        msg.setText(message)
-
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: white;
-            }
-
-            QMessageBox QLabel {
-                color: black;
-                font-size: 13px;
-            }
-
-            QMessageBox QPushButton {
-                background-color: #e5bd62;
-                color: black;
-                padding: 6px 18px;
-                border-radius: 5px;
-                font-weight: bold;
-            }
-        """)
-
-        msg.exec()
-
-    # ==========================================
-    # HINT
-    # ==========================================
+    # =====================================
+    # HINT SYSTEM
+    # =====================================
 
     def show_hint(self):
+
+        possible_moves = []
+
+        # -------------------------------------
+        # 1. WASTE CARD MOVES
+        # -------------------------------------
 
         if self.game.waste:
 
             card = self.game.waste[-1]
 
+            # Waste to Tableau
+
             for i, pile in enumerate(self.game.tableau):
 
                 if self.game.is_valid_tableau_move(card, pile):
 
-                    self.status_label.setText(
-                        f"Hint: Move {card} to column {i + 1}."
-                    )
+                    possible_moves.append({
+                        "type": "waste_tableau",
+                        "target": i
+                    })
 
-                    return
+            # Waste to Foundation
 
             if self.game.is_valid_foundation_move(
                 card,
                 self.game.foundations[card.suit]
             ):
 
-                self.status_label.setText(
-                    "Hint: Move the waste card to its foundation."
-                )
+                possible_moves.append({
+                    "type": "waste_foundation",
+                    "suit": card.suit
+                })
 
-                return
+        # -------------------------------------
+        # 2. TABLEAU TO TABLEAU MOVES
+        # -------------------------------------
 
         for source_index, source in enumerate(self.game.tableau):
 
-            if not source:
+            for card_index, card in enumerate(source):
+
+                if not card.face_up:
+                    continue
+
+                moving_cards = source[card_index:]
+
+                valid_sequence = True
+
+                for i in range(len(moving_cards) - 1):
+
+                    first = moving_cards[i]
+                    second = moving_cards[i + 1]
+
+                    if not (
+                        first.face_up
+                        and second.face_up
+                        and first.color != second.color
+                        and first.rank == second.rank + 1
+                    ):
+
+                        valid_sequence = False
+                        break
+
+                if not valid_sequence:
+                    continue
+
+                for target_index, target in enumerate(self.game.tableau):
+
+                    if source_index == target_index:
+                        continue
+
+                    if self.game.is_valid_tableau_move(card, target):
+
+                        possible_moves.append({
+                            "type": "tableau_tableau",
+                            "source": source_index,
+                            "card_index": card_index,
+                            "target": target_index
+                        })
+
+        # -------------------------------------
+        # 3. TABLEAU TO FOUNDATION MOVES
+        # -------------------------------------
+
+        for source_index, pile in enumerate(self.game.tableau):
+
+            if not pile:
                 continue
 
-            card = source[-1]
-
-            if not card.face_up:
-                continue
+            card = pile[-1]
 
             if self.game.is_valid_foundation_move(
                 card,
                 self.game.foundations[card.suit]
             ):
 
-                self.status_label.setText(
-                    f"Hint: Move the top card of column "
-                    f"{source_index + 1} to its foundation."
+                possible_moves.append({
+                    "type": "tableau_foundation",
+                    "source": source_index,
+                    "card_index": len(pile) - 1,
+                    "suit": card.suit
+                })
+
+        # -------------------------------------
+        # 4. CHECK IF MOVES EXIST
+        # -------------------------------------
+
+        if not possible_moves:
+
+            self.selected = None
+
+            if self.game.stock:
+                message = (
+                    "No direct moves available. "
+                    "Try drawing cards from Stock."
                 )
 
-                return
+            elif self.game.waste:
+                message = (
+                    "No direct moves available. "
+                    "Try recycling the Waste pile."
+                )
 
-            for target_index, target in enumerate(self.game.tableau):
+            else:
+                message = "No possible moves available."
 
-                if (
-                    source_index != target_index
-                    and self.game.is_valid_tableau_move(card, target)
+            self.status_label.setText(message)
+            self.refresh_board()
+            return
+
+        # -------------------------------------
+        # 5. ROTATE HINTS
+        # -------------------------------------
+
+        self.hint_index %= len(possible_moves)
+
+        hint = possible_moves[self.hint_index]
+
+        self.hint_index += 1
+
+        self.selected = None
+
+        # -------------------------------------
+        # 6. SHOW WASTE TO TABLEAU HINT
+        # -------------------------------------
+
+        if hint["type"] == "waste_tableau":
+
+            target = hint["target"]
+
+            self.selected = ("waste", None, None)
+
+            message = (
+                f"Hint: Move Waste card to "
+                f"Column {target + 1}."
+            )
+
+        # -------------------------------------
+        # 7. SHOW WASTE TO FOUNDATION HINT
+        # -------------------------------------
+
+        elif hint["type"] == "waste_foundation":
+
+            suit = hint["suit"]
+
+            self.selected = ("waste", None, None)
+
+            message = (
+                f"Hint: Move Waste card to "
+                f"{suit} Foundation."
+            )
+
+        # -------------------------------------
+        # 8. SHOW TABLEAU TO TABLEAU HINT
+        # -------------------------------------
+
+        elif hint["type"] == "tableau_tableau":
+
+            source = hint["source"]
+            target = hint["target"]
+            card_index = hint["card_index"]
+
+            self.selected = (
+                "tableau",
+                source,
+                card_index
+            )
+
+            message = (
+                f"Hint: Move selected sequence from "
+                f"Column {source + 1} to "
+                f"Column {target + 1}."
+            )
+
+        # -------------------------------------
+        # 9. SHOW TABLEAU TO FOUNDATION HINT
+        # -------------------------------------
+
+        else:
+
+            source = hint["source"]
+            suit = hint["suit"]
+            card_index = hint["card_index"]
+
+            self.selected = (
+                "tableau",
+                source,
+                card_index
+            )
+
+            message = (
+                f"Hint: Move Column {source + 1} "
+                f"card to {suit} Foundation."
+            )
+
+        self.status_label.setText(message)
+
+        self.refresh_board()
+
+    # =====================================
+    # AUTO MOVE
+    # =====================================
+
+    def auto_move(self):
+
+        moved = False
+
+        if self.game.waste:
+
+            card = self.game.waste[-1]
+
+            if self.game.is_valid_foundation_move(
+                card,
+                self.game.foundations[card.suit]
+            ):
+
+                self.save_history()
+
+                moved = self.game.move_waste_to_foundation()
+
+        if not moved:
+
+            for index, pile in enumerate(self.game.tableau):
+
+                if not pile:
+                    continue
+
+                card = pile[-1]
+
+                if self.game.is_valid_foundation_move(
+                    card,
+                    self.game.foundations[card.suit]
                 ):
 
-                    self.status_label.setText(
-                        f"Hint: Move the top card of column "
-                        f"{source_index + 1} to column "
-                        f"{target_index + 1}."
+                    self.save_history()
+
+                    moved = self.game.move_tableau_to_foundation(
+                        index
                     )
 
-                    return
+                    if moved:
+                        break
 
-        self.status_label.setText(
-            "Hint: Draw a card or check your tableau."
-        )
+        if moved:
 
-    # ==========================================
-    # NEW GAME AND RESTART
-    # ==========================================
+            self.moves += 1
+            self.hint_index = 0
+
+            self.status_label.setText(
+                "Card moved to foundation."
+            )
+
+        else:
+
+            self.status_label.setText(
+                "No automatic move available."
+            )
+
+        self.selected = None
+        self.refresh_board()
+
+    # =====================================
+    # NEW GAME
+    # =====================================
 
     def new_game(self):
 
@@ -1466,24 +1358,20 @@ class MainWindow(QMainWindow):
         self.seconds = 0
         self.won_message_shown = False
 
+        self.hint_index = 0
+
         self.timer.start(1000)
 
-        self.status_label.setText(
-            "New game started!"
-        )
+        self.time_label.setText("Time: 00:00")
 
-        self.time_label.setText("TIME: 00:00")
+        self.status_label.setText("New game started.")
 
-        self.update_draw_mode_buttons()
+        self.update_draw_buttons()
         self.refresh_board()
 
-    def restart_game(self):
-
-        self.new_game()
-
-    # ==========================================
+    # =====================================
     # TIMER
-    # ==========================================
+    # =====================================
 
     def update_timer(self):
 
@@ -1493,9 +1381,13 @@ class MainWindow(QMainWindow):
         seconds = self.seconds % 60
 
         self.time_label.setText(
-            f"TIME: {minutes:02d}:{seconds:02d}"
+            f"Time: {minutes:02d}:{seconds:02d}"
         )
 
+
+# =====================================
+# RUN GAME
+# =====================================
 
 if __name__ == "__main__":
 
